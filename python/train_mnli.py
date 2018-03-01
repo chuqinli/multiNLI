@@ -7,6 +7,7 @@ import tensorflow as tf
 import os
 import importlib
 import random
+import pandas as pd
 from util import logger
 import util.parameters as params
 from util.data_processing import *
@@ -37,6 +38,9 @@ test_snli = load_nli_data(FIXED_PARAMETERS["test_snli"], snli=True)
 training_mnli = load_nli_data(FIXED_PARAMETERS["training_mnli"])
 dev_matched = load_nli_data(FIXED_PARAMETERS["dev_matched"])
 dev_mismatched = load_nli_data(FIXED_PARAMETERS["dev_mismatched"])
+training_mnli_senti = pd.read_csv('/Users/cli30/Documents/multiNLI/data/multinli_0.9/multinli_0.9_trainSenti.csv')
+dev_matched_senti = pd.read_csv('/Users/cli30/Documents/multiNLI/data/multinli_0.9/multinli_0.9_dev_matchedSenti.csv')
+dev_mismatched_senti = pd.read_csv('/Users/cli30/Documents/multiNLI/data/multinli_0.9/multinli_0.9_dev_mismatchedSenti.csv')
 test_matched = load_nli_data(FIXED_PARAMETERS["test_matched"])
 test_mismatched = load_nli_data(FIXED_PARAMETERS["test_mismatched"])
 
@@ -102,10 +106,18 @@ class modelClassifier:
         indices = range(start_index, end_index)
         premise_vectors = np.vstack([dataset[i]['sentence1_binary_parse_index_sequence'] for i in indices])
         hypothesis_vectors = np.vstack([dataset[i]['sentence2_binary_parse_index_sequence'] for i in indices])
+        #sent1senti_vectors = np.vstack(np.asarray(training_mnli_senti.loc[indices,['sent1neu','sent1neg','sent1pos','sent1comp']]))
+        #sent2senti_vectors = np.vstack(np.asarray(training_mnli_senti.loc[indices,['sent2neu','sent2neg','sent2pos','sent2comp']]))
         genres = [dataset[i]['genre'] for i in indices]
         labels = [dataset[i]['label'] for i in indices]
         return premise_vectors, hypothesis_vectors, labels, genres
+        #, sent1senti_vectors, sent2senti_vectors
 
+    def get_senti_minibatch(self, dataset, start_index, end_index):
+        indices = range(start_index, end_index)
+        sent1senti_vectors = np.vstack(np.asarray(training_mnli_senti.loc[indices,['sent1neu','sent1neg','sent1pos','sent1comp']]))
+        sent2senti_vectors = np.vstack(np.asarray(training_mnli_senti.loc[indices,['sent2neu','sent2neg','sent2pos','sent2comp']]))
+        return sent1senti_vectors, sent2senti_vectors
 
     def train(self, train_mnli, train_snli, dev_mat, dev_mismat, dev_snli):        
         self.sess = tf.Session()
@@ -146,23 +158,27 @@ class modelClassifier:
 
         while True:
             training_data = train_mnli + random.sample(train_snli, beta)
-            random.shuffle(training_data)
+            #random.shuffle(training_data)
             avg_cost = 0.
             total_batch = int(len(training_data) / self.batch_size)
 
             # Loop over all batches in epoch
             for i in range(total_batch):
                 # Assemble a minibatch of the next B examples
+                # TODO: change minibatch function
                 minibatch_premise_vectors, minibatch_hypothesis_vectors, minibatch_labels, minibatch_genres = self.get_minibatch(
                     training_data, self.batch_size * i, self.batch_size * (i + 1))
-                
+                minibatch_sent1senti_vectors, minibatch_sent2senti_vectors = self.get_senti_minibatch(training_mnli_senti, self.batch_size * i, self.batch_size * (i + 1))
                 # Run the optimizer to take a gradient step, and also fetch the value of the 
                 # cost function for logging
                 feed_dict = {self.model.premise_x: minibatch_premise_vectors,
                                 self.model.hypothesis_x: minibatch_hypothesis_vectors,
+                                self.model.sentiment_1: minibatch_sent1senti_vectors,
+                                self.model.sentiment_2: minibatch_sent2senti_vectors,
                                 self.model.y: minibatch_labels, 
                                 self.model.keep_rate_ph: self.keep_rate}
                 _, c = self.sess.run([self.optimizer, self.model.total_cost], feed_dict)
+                #print return_value.shape
 
                 # Since a single epoch can take a  ages for larger models (ESIM),
                 # we'll print  accuracy every 50 steps
@@ -228,8 +244,11 @@ class modelClassifier:
         for i in range(total_batch):
             minibatch_premise_vectors, minibatch_hypothesis_vectors, minibatch_labels, minibatch_genres = self.get_minibatch(
                 examples, self.batch_size * i, self.batch_size * (i + 1))
+            minibatch_sent1senti_vectors, minibatch_sent2senti_vectors = self.get_senti_minibatch(examples, self.batch_size * i, self.batch_size * (i + 1))
             feed_dict = {self.model.premise_x: minibatch_premise_vectors, 
                                 self.model.hypothesis_x: minibatch_hypothesis_vectors,
+                                self.model.sentiment_1: minibatch_sent1senti_vectors,
+                                self.model.sentiment_2: minibatch_sent2senti_vectors,
                                 self.model.y: minibatch_labels, 
                                 self.model.keep_rate_ph: 1.0}
             genres += minibatch_genres
@@ -256,8 +275,11 @@ class modelClassifier:
         for i in range(total_batch):
             minibatch_premise_vectors, minibatch_hypothesis_vectors, minibatch_labels, minibatch_genres = self.get_minibatch(
                 examples, self.batch_size * i, self.batch_size * (i + 1))
+            minibatch_sent1senti_vectors, minibatch_sent2senti_vectors = self.get_senti_minibatch(examples, self.batch_size * i, self.batch_size * (i + 1))
             feed_dict = {self.model.premise_x: minibatch_premise_vectors, 
                                 self.model.hypothesis_x: minibatch_hypothesis_vectors,
+                                self.model.sentiment_1: minibatch_sent1senti_vectors,
+                                self.model.sentiment_2: minibatch_sent2senti_vectors,
                                 self.model.y: minibatch_labels, 
                                 self.model.keep_rate_ph: 1.0}
             genres += minibatch_genres

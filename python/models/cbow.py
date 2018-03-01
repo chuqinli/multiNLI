@@ -10,13 +10,15 @@ class MyModel(object):
 		## Define placeholders
         self.premise_x = tf.placeholder(tf.int32, [None, self.sequence_length])
         self.hypothesis_x = tf.placeholder(tf.int32, [None, self.sequence_length])
+        self.sentiment_1 = tf.placeholder(tf.float32, [None, 4])
+        self.sentiment_2 = tf.placeholder(tf.float32, [None, 4])
         self.y = tf.placeholder(tf.int32, [None])
         self.keep_rate_ph = tf.placeholder(tf.float32, [])
 
         ## Define remaning parameters 
         self.E = tf.Variable(embeddings, trainable=emb_train, name="emb")
 
-        self.W_0 = tf.Variable(tf.random_normal([self.embedding_dim * 4, self.dim], stddev=0.1), name="w0")
+        self.W_0 = tf.Variable(tf.random_normal([self.embedding_dim * 4 + 16, self.dim], stddev=0.1), name="w0")
         self.b_0 = tf.Variable(tf.random_normal([self.dim], stddev=0.1), name="b0")
 
         self.W_1 = tf.Variable(tf.random_normal([self.dim, self.dim], stddev=0.1), name="w1")
@@ -43,8 +45,15 @@ class MyModel(object):
         h_diff = premise_rep - hypothesis_rep
         h_mul = premise_rep * hypothesis_rep
 
+        #sent1_rep = tf.reduce_sum(self.sentiment_1, 1)
+        #sent2_rep = tf.reduce_sum(self.sentiment_2, 1)
+        sent1_rep = self.sentiment_1
+        sent2_rep = self.sentiment_2
+        s_diff = sent1_rep - sent2_rep
+        s_mul = sent1_rep * sent2_rep
+
         ### MLP
-        mlp_input = tf.concat([premise_rep, hypothesis_rep, h_diff, h_mul], 1)
+        mlp_input = tf.concat([premise_rep, hypothesis_rep, h_diff, h_mul, sent1_rep, sent2_rep, s_diff, s_mul], 1)
         h_1 = tf.nn.relu(tf.matmul(mlp_input, self.W_0) + self.b_0)
         h_2 = tf.nn.relu(tf.matmul(h_1, self.W_1) + self.b_1)
         h_3 = tf.nn.relu(tf.matmul(h_2, self.W_2) + self.b_2)
